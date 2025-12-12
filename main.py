@@ -419,13 +419,17 @@ def encoder_blocs(blocs, t, n_process):
 
 # Changer un certain % de valeurs de couleurs aléatoirement
 def bruit(blocs_encodes, pourcent):
-    n_rgb = 0
+    # On calcule dans un premier temps la taille réelle du message transmis
+    img_trans_size = 0
     chg = 0
     array_bruite = []
     for bloc, coords in blocs_encodes:
-        n_rgb += len(bloc)
+        img_trans_size += len(bloc)
         array_bruite.append((bloc.copy(), coords))
-    while chg != int(n_rgb * pourcent):
+    # On s'assure de modifier le bon pourcentage en:
+    # ne modifiant qu'une seule valeur de rgb
+    # on vérifiant qu'on n'a pas déjà modifié le pixel
+    while chg < img_trans_size * pourcent:
         b_rand = random.randint(0, len(blocs_encodes)-1)
         val_rand = random.randint(0, len(blocs_encodes[b_rand][0])-1)
         if array_bruite[b_rand][0][val_rand] == blocs_encodes[b_rand][0][val_rand]:
@@ -480,8 +484,8 @@ def erreur(final, initial):
             if pixel == 3:
                 pixel = 0
                 erreur_pixel = False
-    return compte_val / (len(final) * len(final[0]))
-
+    size = len(final) * len(final[0])
+    return (compte_val / size, compte_pixel / size)
 
 # Surveille le temps pris par une tache à une précision donnée
 def monitor(fn, args, texte, precis):
@@ -498,45 +502,75 @@ def monitor(fn, args, texte, precis):
 # MODE EXCEL #
 ##############
 
-mode_excel = input("Mode excel : ") == "oui"
-if mode_excel:
-    mode_overwrite = input("Mode overwrite : ") == "oui"
-    startline = input("Ligne de départ - défaut = 2")
-    if startline == "":
-        startline = 2
+if input("Mode excel : ") == "oui":
+    mode_overwrite = input("Mode overwrite (danger) : ") == "oui"
+    if mode_overwrite == True:
+        print("Sûr d'entrer en mode overwrite (toutes les données vont être supprimées) ?! Tu peux faire Ctrl-C pour annuler ")
+        input()
+    n_process = input("n_process - défaut = 16 : ")
+    if n_process == "":
+        n_process = 16
     else:
-        startline = int(startline)
-    # Oublie pas de mettre entree.xlsx après
-    tableau = pandas.read_excel("/home/caracole/H4/TIPE/excel/test.xlsx")
-    n_process = 16
+        n_process = int(n_process)
 
-    # TODO: commencer à partir de startline
-    for i, row in tableau.iterrows():
+    # Oublie pas de mettre entree.xlsx après
+    entree = pandas.read_excel("/home/caracole/H4/TIPE/excel/test.xlsx")
+    sortie = pandas.read_excel("/home/caracole/H4/TIPE/excel/sortie.xlsx")
+    curseur = sortie.shape[0]
+    if mode_overwrite or sortie.empty:
+        headers = pandas.read_excel("/home/caracole/H4/TIPE/excel/headers.ods")
+        sortie = pandas.DataFrame(columns=headers.columns)
+        curseur = 0
+
+    for i, row in entree.iterrows():
+        size, name, blocs_x, blocs_y, t, bruit = row.size, row.name, row.blocs_x, row.blocs_y, row.t, row.bruit
+        t_max = int((255 - blocs_x * blocs_y)/2)
         # pour modifier
         # tableau.at[i, "bruit"] = 0
         # pour lire
-        # row.bruit
+        # bruit
         # pour enregistrer
         # tableau.to_excel("/home/caracole/H4/TIPE/excel/sortie.xlsx")
-        img_url = f"/home/caracole/H4/TIPE/images sources/{row.size}/{row.name}.jpg"
+        img_url = f"/home/caracole/H4/TIPE/images sources/{size}/{name}.jpg"
 
         img_raw = extract_img(img_url)
         width, height = len(img_raw[0]), len(img_raw)  # Attention ! width fait 3* la largeur de la vraie img
-        img_blocs = diviser_blocs(img_raw, row.blocs_x, row.blocs_y)
-        # TODO: Changer monitor pour enregistrer le temps et les infos importantes et modifier le excel en fonction
-        blocs_encodes = monitor(encoder_blocs, (img_blocs, row.t, n_process), "Encodage des blocs", precis_temps)
+        img_blocs = diviser_blocs(img_raw, blocs_x, blocs_y)
 
-        print(f"On crée du bruit à {row.bruit}%")
-        blocs_bruites = bruit(blocs_encodes, row.bruit / 100)
+        debut_enc = time.time()
+        blocs_encodes = encoder_blocs(img_blocs, t, n_process)
+        fin_enc = time.time()
+        blocs_bruites = bruit(blocs_encodes, bruit / 100) #type:ignore
 
-        if input("Afficher l'image avec du bruit ?") == "oui":
-            vraie_img_blocs = [ (bloc[-coords[2]*coords[3]:], coords) for bloc, coords in blocs_bruites ]
-            vraie_img_bruit = recreer_img(vraie_img_blocs, width, height)
-            bruit_PIL = PIL_img(vraie_img_bruit)
-            bruit_PIL.show()
+        debut_dec = time.time()
+        blocs_decodes = decoder_blocs(blocs_bruites, t, n_process)
+        fin_dec = time.time()
 
-        texte_decodage = f"Décodage avec des blocs/mots de taille (au max) k = {row.blocs_x * row.blocs_y} et t = {row.t}:"
-        blocs_decodes = monitor(decoder_blocs, (blocs_bruites, t, n_process), texte_decodage, precis_temps)
+        img_decodee = recreer_img(blocs_decodes, width, height)
+        final = PIL_img(img_decodee)
+        end = f"{name}/{size} - {bruit} - {blocs_x}x{blocs_y} - {t} sur {t_max}.jpg"
+        final.save(f"/home/caracole/H4/TIPE/resultats automatiques/{end}", quality=95)
+
+        e_pourcent = erreur(final, img_raw)
+        infos = {
+            "name": name,
+            "size": size,
+            "img_x": width,
+            "img_y": height,
+            "n_pixels": int(width * height / 100),
+            "blocs_x": blocs_x,
+            "blocs_y": blocs_y,
+            "t": t,
+            "t_max": t_max,
+            "bruit": bruit,
+            "enc": fin_enc - debut_enc,
+            "dec": fin_dec - debut_dec,
+            "e_val": e_pourcent[0],
+            "e_pixel": e_pourcent[1]
+        }
+        sortie.at[curseur+i] = infos #type:ignore
+
+    sortie.to_excel("/home/caracole/H4/TIPE/excel/sortie.xlsx")
 
 
 ######
@@ -600,7 +634,7 @@ while boucle != 0:
     final.show()
 
     e_pourcent = erreur(img_decodee, img_raw)
-    print("% d'erreur :", e_pourcent * 100)
+    print("% d'erreur (rgb, pixel) :", e_pourcent * 100)
 
     if input() == "q":
         break
