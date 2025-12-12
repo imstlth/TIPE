@@ -3,6 +3,7 @@ import numpy as np
 import time
 import random
 from PIL import Image
+import pandas
 
 # On s'aide un peu de https://en.wikiversity.org/wiki/Reed%E2%80%93Solomon_codes_for_coders
 # Avec numpy, le produit matriciel s'écrit A @ B
@@ -416,14 +417,25 @@ def encoder_blocs(blocs, t, n_process):
 # DÉCODAGE IMAGE #
 ##################
 
-# Une fonction bruit qui change un certain pourcentage de pixels aléatoirement
-def bruit(blocs_encodes, pourcent, n_pixels):
-    array_bruite = [ (bloc.copy(), coords) for bloc, coords in blocs_encodes ]
-    for i in range(int(n_pixels * pourcent)):
+# Changer un certain % de valeurs de couleurs aléatoirement
+def bruit(blocs_encodes, pourcent):
+    n_rgb = 0
+    chg = 0
+    array_bruite = []
+    for bloc, coords in blocs_encodes:
+        n_rgb += len(bloc)
+        array_bruite.append((bloc.copy(), coords))
+    while chg != int(n_rgb * pourcent):
         b_rand = random.randint(0, len(blocs_encodes)-1)
-        pixel_rand = random.randint(0, len(blocs_encodes[b_rand][0])-1)
-        array_bruite[b_rand][0][pixel_rand] = F256(random.randint(0, 255))
+        val_rand = random.randint(0, len(blocs_encodes[b_rand][0])-1)
+        if array_bruite[b_rand][0][val_rand] == blocs_encodes[b_rand][0][val_rand]:
+            array_bruite[b_rand][0][val_rand] = F256(random.randint(0, 255))
+            chg += 1
     return array_bruite
+
+# On crée une matrice qui réarrange les blocs encodés qui a les mêmes proportions que
+def taches(blocs_encodes, n_taches, a_min, a_max):
+    pass
 
 def decoder_blocs(blocs, t, n_process):
     return multiprocess(blocs, decodage_v2, t, n_process)
@@ -448,15 +460,27 @@ def PIL_img(img):
     PIL_img = Image.fromarray(rgb_img.astype("uint8"), "RGB")
     return PIL_img
 
-# On récupère une image résultat en F256 et l'image de base (en F256) et on renvoit le pourcentage d'erreur
+# On récupère une image résultat en F256 et l'image de base (en F256)
+# et on renvoit le % d'erreur en couleur et en pixel
 def erreur(final, initial):
-    compte = 0
+    compte_val = 0
+    compte_pixel = 0
     if (len(final), len(final[0])) != (len(initial), len(initial[0])):
         raise Exception("Les tailles ne correspondent pas ! (force à toi)")
     for y in range(len(final)):
+        pixel = 0
+        erreur_pixel = False
         for x in range(len(final[0])):
-            compte += int(final[y][x] != initial[y][x])
-    return compte / (len(final) * len(final[0]))
+            if final[y][x] != initial[y][x]:
+                compte_val += 1
+                if not erreur_pixel:
+                    erreur_pixel = True
+                    compte_pixel += 1
+            pixel += 1
+            if pixel == 3:
+                pixel = 0
+                erreur_pixel = False
+    return compte_val / (len(final) * len(final[0]))
 
 
 # Surveille le temps pris par une tache à une précision donnée
@@ -470,9 +494,54 @@ def monitor(fn, args, texte, precis):
     return output
 
 
-###################
-# UI + ALGO FINAL #
-###################
+##############
+# MODE EXCEL #
+##############
+
+mode_excel = input("Mode excel : ") == "oui"
+if mode_excel:
+    mode_overwrite = input("Mode overwrite : ") == "oui"
+    startline = input("Ligne de départ - défaut = 2")
+    if startline == "":
+        startline = 2
+    else:
+        startline = int(startline)
+    # Oublie pas de mettre entree.xlsx après
+    tableau = pandas.read_excel("/home/caracole/H4/TIPE/excel/test.xlsx")
+    n_process = 16
+
+    # TODO: commencer à partir de startline
+    for i, row in tableau.iterrows():
+        # pour modifier
+        # tableau.at[i, "bruit"] = 0
+        # pour lire
+        # row.bruit
+        # pour enregistrer
+        # tableau.to_excel("/home/caracole/H4/TIPE/excel/sortie.xlsx")
+        img_url = f"/home/caracole/H4/TIPE/images sources/{row.size}/{row.name}.jpg"
+
+        img_raw = extract_img(img_url)
+        width, height = len(img_raw[0]), len(img_raw)  # Attention ! width fait 3* la largeur de la vraie img
+        img_blocs = diviser_blocs(img_raw, row.blocs_x, row.blocs_y)
+        # TODO: Changer monitor pour enregistrer le temps et les infos importantes et modifier le excel en fonction
+        blocs_encodes = monitor(encoder_blocs, (img_blocs, row.t, n_process), "Encodage des blocs", precis_temps)
+
+        print(f"On crée du bruit à {row.bruit}%")
+        blocs_bruites = bruit(blocs_encodes, row.bruit / 100)
+
+        if input("Afficher l'image avec du bruit ?") == "oui":
+            vraie_img_blocs = [ (bloc[-coords[2]*coords[3]:], coords) for bloc, coords in blocs_bruites ]
+            vraie_img_bruit = recreer_img(vraie_img_blocs, width, height)
+            bruit_PIL = PIL_img(vraie_img_bruit)
+            bruit_PIL.show()
+
+        texte_decodage = f"Décodage avec des blocs/mots de taille (au max) k = {row.blocs_x * row.blocs_y} et t = {row.t}:"
+        blocs_decodes = monitor(decoder_blocs, (blocs_bruites, t, n_process), texte_decodage, precis_temps)
+
+
+######
+# UI #
+######
 
 print("C'est étrange mais en boucle, les performances diminuent nettement à chaque boucle")
 
@@ -493,13 +562,13 @@ while boucle != 0:
         precis_temps = 100
     else:
         precis_temps = 10 ** int(precis_temps)
-    option = input("bounty, classe HX2, HX2 tableau, logo HX2, soleil ou vincent - défaut = bounty : ")
-    if option == "":
-        option = "bounty"
-    taille = input("small, mid, big ou originale - défaut = small : ")
-    if taille == "":
-        taille = "small"
-    img_url = f"/home/caracole/H4/TIPE/images sources/{taille}/{option}.jpg"
+    name = input("bounty, classe HX2, HX2 tableau, logo HX2, soleil ou vincent - défaut = bounty : ")
+    if name == "":
+        name = "bounty"
+    size = input("small, mid, big ou originale - défaut = small : ")
+    if size == "":
+        size = "small"
+    img_url = f"/home/caracole/H4/TIPE/images sources/{size}/{name}.jpg"
     blocs_x = int(input("blocs_x : "))
     blocs_y = int(input(f"blocs_y <= {int(255/blocs_x)} : "))
     t = int(input(f"t <= {int((255 - blocs_x * blocs_y)/2)} : "))
@@ -511,23 +580,22 @@ while boucle != 0:
         n_process = int(n_process)
 
     img_raw = extract_img(img_url)
-    vraie_img = PIL_img(img_raw)
-    img_size = vraie_img.size
+    width, height = len(img_raw[0]), len(img_raw)  # Attention ! width fait 3* la largeur de la vraie img
     img_blocs = diviser_blocs(img_raw, blocs_x, blocs_y)
     blocs_encodes = monitor(encoder_blocs, (img_blocs, t, n_process), "Encodage des blocs", precis_temps)
 
     print(f"On crée du bruit à {niveau_bruit}%")
-    blocs_bruites = bruit(blocs_encodes, niveau_bruit / 100, img_size[0] * img_size[1])
+    blocs_bruites = bruit(blocs_encodes, niveau_bruit / 100)
 
     if input("Afficher l'image avec du bruit ?") == "oui":
         vraie_img_blocs = [ (bloc[-coords[2]*coords[3]:], coords) for bloc, coords in blocs_bruites ]
-        vraie_img_bruit = recreer_img(vraie_img_blocs, 3 * img_size[0], img_size[1])
+        vraie_img_bruit = recreer_img(vraie_img_blocs, width, height)
         bruit_PIL = PIL_img(vraie_img_bruit)
         bruit_PIL.show()
 
     texte_decodage = f"Décodage avec des blocs/mots de taille (au max) k = {blocs_x * blocs_y} et t = {t}:"
     blocs_decodes = monitor(decoder_blocs, (blocs_bruites, t, n_process), texte_decodage, precis_temps)
-    img_decodee = recreer_img(blocs_decodes, 3 * img_size[0], img_size[1])
+    img_decodee = recreer_img(blocs_decodes, width, height)
     final = PIL_img(img_decodee)
     final.show()
 

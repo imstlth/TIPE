@@ -1,0 +1,15 @@
+Pour normer un minimum les mesures, faut faire les tests avec :
+- le PC sur secteur (absolument) - permet de le débrider
+- 100% en batterie (si possible)
+
+Il faut pas changer les headers (première colonne) ni rajouter de nouvelles colonnes.
+On peut rajouter des lignes sans problème.
+
+Pour avoir le graphique de la complexité dans le excel,
+trier par bloc_x = 12 et bruit = 10
+
+Pour avoir le graphique de l'erreur,
+trier par bloc_x = 15
+
+les trucs en gris sont non représentatifs
+(car le PC était débranché ou que le script python était en mode boucle).
