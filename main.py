@@ -524,7 +524,6 @@ if input("Mode excel - défaut non : ") == "oui":
     else:
         n_process = int(n_process)
 
-    # Oublie pas de mettre entree.xlsx après
     entree = pandas.read_excel("/home/caracole/H4/TIPE/excel/entree.xlsx")
     sortie = pandas.read_excel("/home/caracole/H4/TIPE/excel/sortie.xlsx")
 
@@ -536,8 +535,9 @@ if input("Mode excel - défaut non : ") == "oui":
 
     for i, row in entree.iterrows():
         if silent:
-            long = int(os.popen("stty size", "r").read().split()[0])
-            print("\r[" + "#" * int(((i+1)/entree.shape[0]) * (long-10)) + f"] {i+1}/{entree.shape[0]}", end="") #type:ignore
+            long = int(os.popen("stty size", "r").read().split()[1])
+            n = int(((i+1)/entree.shape[0]) * (long-10)) #type:ignore
+            print("\r[" + "#" * n + " " * (long - 10 - n) + f"] {i+1}/{entree.shape[0]}", end="") #type:ignore
         else:
             print()
             print(f"Image {i+1}/{entree.shape[0]}") #type:ignore
@@ -591,7 +591,7 @@ if input("Mode excel - défaut non : ") == "oui":
 
     sortie.to_excel("/home/caracole/H4/TIPE/excel/sortie.xlsx")
     if notif_son:
-        os.system('paplay ~/Musique/notif.mp3 &')
+        os.system('paplay /home/caracole/Musique/notif.mp3 &')
     if notif:
         os.system('dunstify -I "/usr/share/icons/Papirus/32x32/apps/python.svg" -t 10000 -a "TIPE" "fin" "Le mode excel est terminé"')
 
