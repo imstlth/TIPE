@@ -539,7 +539,7 @@ if input("Mode excel - défaut non : ") == "oui":
 
     if silent:
         long = int(os.popen("stty size", "r").read().split()[1])
-        print("\r[" + " " * (long - 10) + "] 1/" + str(entree.shape[0]), end="")
+        print("\r[" + " " * (long - 10) + "] 0/" + str(entree.shape[0]), end="")
 
     for i, row in entree.iterrows():
         if not silent:
@@ -604,6 +604,8 @@ if input("Mode excel - défaut non : ") == "oui":
     if notif:
         os.system('dunstify -I "/usr/share/icons/Papirus/32x32/apps/python.svg" -t 10000 -a "TIPE" "fin" "Le mode excel est terminé"')
 
+    if silent:
+        print()
     print("Enregistré dans /home/caracole/H4/TIPE/excel/sortie.xlsx")
 
     exit()
