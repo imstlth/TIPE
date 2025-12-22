@@ -385,6 +385,10 @@ def extract_img(url):
             Fpixels[y, 3 * x + c] = F256(pixels[i][c])
     return Fpixels
 
+# NOTE:
+# Ce n'est pas un problème que la taille des blocs soit différente
+# alors qu'ils ont le même t.
+
 # Prend une matrice de F256 et la divise en blocs.
 # Les blocs peuvent ne pas quadriller parfaitement.
 # Les blocs sont des blocs de composantes de couleur et non de pixels
@@ -438,7 +442,7 @@ def bruit(blocs_encodes, pourcent):
         array_bruite.append((bloc.copy(), coords))
     # On s'assure de modifier le bon pourcentage en:
     # ne modifiant qu'une seule valeur de rgb
-    # on vérifiant qu'on n'a pas déjà modifié le pixel
+    # en vérifiant qu'on n'a pas déjà modifié le pixel
     while chg < img_trans_size * pourcent:
         b_rand = random.randint(0, len(blocs_encodes)-1)
         val_rand = random.randint(0, len(blocs_encodes[b_rand][0])-1)
@@ -533,12 +537,12 @@ if input("Mode excel - défaut non : ") == "oui":
         sortie = pandas.DataFrame(columns=headers.columns)
         curseur = 0
 
+    if silent:
+        long = int(os.popen("stty size", "r").read().split()[1])
+        print("\r[" + " " * (long - 10) + "] 1/" + str(entree.shape[0]), end="")
+
     for i, row in entree.iterrows():
-        if silent:
-            long = int(os.popen("stty size", "r").read().split()[1])
-            n = int(((i+1)/entree.shape[0]) * (long-10)) #type:ignore
-            print("\r[" + "#" * n + " " * (long - 10 - n) + f"] {i+1}/{entree.shape[0]}", end="") #type:ignore
-        else:
+        if not silent:
             print()
             print(f"Image {i+1}/{entree.shape[0]}") #type:ignore
             print()
@@ -571,7 +575,7 @@ if input("Mode excel - défaut non : ") == "oui":
         chemin = f"/home/caracole/H4/TIPE/resultats automatiques/{end}"
         final.save(chemin, quality=95)
 
-        e_pourcent = erreur(extract_img(chemin), img_raw)
+        e_pourcent = erreur(img_decodee, img_raw)
 
         pos = curseur + i #type:ignore
         sortie.at[pos, "nom"] = nom
@@ -589,6 +593,11 @@ if input("Mode excel - défaut non : ") == "oui":
         sortie.at[pos, "e_val"] = e_pourcent[0]
         sortie.at[pos, "e_pixel"] = e_pourcent[1]
 
+        if silent:
+            long = int(os.popen("stty size", "r").read().split()[1])
+            n = int(((i+1)/entree.shape[0]) * (long-10)) #type:ignore
+            print("\r[" + "#" * n + " " * (long - 10 - n) + f"] {i+1}/{entree.shape[0]}", end="") #type:ignore
+
     sortie.to_excel("/home/caracole/H4/TIPE/excel/sortie.xlsx")
     if notif_son:
         os.system('paplay /home/caracole/Musique/notif.mp3 &')
@@ -604,9 +613,9 @@ if input("Mode excel - défaut non : ") == "oui":
 # UI #
 ######
 
-print("C'est étrange mais en boucle, les performances diminuent nettement à chaque boucle")
+print("C'est étrange mais en boucle, les performances diminuent nettement à chaque itération")
 
-test_boucle = input("En boucle : ")
+test_boucle = input("En boucle - défaut = non : ")
 boucle = 1 if test_boucle == "oui" else -1
 if boucle == 1:
     print("""Après chaque affichage de l'image décodée,
@@ -661,7 +670,7 @@ while boucle != 0:
     final.show()
 
     e_pourcent = erreur(img_decodee, img_raw)
-    print("% d'erreur (rgb, pixel) :", e_pourcent * 100)
+    print("% d'erreur (rgb, pixel) :", (e_pourcent[0] * 100, e_pourcent[1] * 100))
 
     if input() == "q":
         break
