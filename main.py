@@ -277,9 +277,6 @@ def det_ir_xr(poly_lambda):
     return ir, xr
 
 def det_E(ir, xr, synds, k, t):
-    # if len(xr) < nu:
-    #     print("Le nombre d'erreur est supérieur au seuil max, on ne peut pas décoder")
-    #     exit()
     nu = len(xr)
     mat_xr = np.full((nu, nu), F256(0), dtype=F256)
     for ligne in range(nu):
