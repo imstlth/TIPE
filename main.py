@@ -224,7 +224,7 @@ def algo_du_pivot(mat):
         raise Exception("Elle est pas carrée !")
     for col in range(n):
         pivot = None
-        # À chaque fois qu'on fait un pivot, on regarde plus que les lignes en dessous
+        # À chaque fois qu'on fait un pivot, on regarde plus que les lignes au dessus
         for ligne in range(n_pivots_prec, n):
             pivot = cop[ligne, col]
             if pivot != F256(0):
