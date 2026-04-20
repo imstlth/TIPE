@@ -372,7 +372,7 @@ def extract_img(url):
     # img = Image.open(urlopen(url))
     img = Image.open(url)
     largeur, hauteur = img.size
-    pixels = list(img.get_flattened_data()) # type: ignore
+    pixels = list(img.get_flattened_data())
     img.close()
     # RGB fait tripler la largeur de l'image
     Fpixels = np.full((hauteur, largeur * 3), F256(0), dtype=F256)
@@ -634,7 +634,7 @@ if __name__ == "__main__":
             precis_temps = 100
         else:
             precis_temps = 10 ** int(precis_temps)
-        name = input("bounty, classe HX2, HX2 tableau, logo HX2, soleil ou vincent - défaut = bounty : ")
+        name = input("bounty, bounty2, classe HX2, HX2 tableau, logo HX2, soleil ou vincent - défaut = bounty : ")
         if name == "":
             name = "bounty"
         size = input("small, mid, big ou originale - défaut = small : ")
