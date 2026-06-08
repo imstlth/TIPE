@@ -6,21 +6,6 @@ import random
 from PIL import Image
 import pandas
 
-# On s'aide un peu de https://en.wikiversity.org/wiki/Reed%E2%80%93Solomon_codes_for_coders
-# Avec numpy, le produit matriciel s'écrit A @ B
-# la transposée A.T et le modulo np.mod(mat, modulo).
-# F256 = F2[X]/(P) avec P un polynôme de F2[X] irréductible de degré 8
-# (P) = P F2[X]
-# En l'occurence, grâce à des gens intelligents sur Internet,
-# X^8 + X^7 + X^2 + X + 1 (ligne 54)
-# est irréductible sur F2[X].
-# Il a aussi une propriété ultra cool : notre F256* = {X^k}
-# On représente les polynômes de F2[X] par des nombres binaires.
-# Pour un polynome P, si P >= 0b100000000 = 2**8
-# cela veut dire que son degré est supérieur ou égal à 8
-# Python permet d'effecteur des opérations bit par bit
-# ^ = XOR = + dans F2 (très important)
-
 # Il y a beaucoup de commentaires mais le code tient en 10 lignes
 def div_P(poly):
     "Calcule le reste de la div de poly (en binaire) par P"
@@ -49,31 +34,23 @@ def div_P(poly):
 ########
 
 class F256:
-
     # Attention ! F256 prend en entrée un polynôme et non pas une puissance de X
     def __init__(self, polynome):
         self.poly = div_P(polynome)
-
     def __add__(self, other):
         return F256(self.poly ^ other.poly)
-
     # Nous sommes en caractéristique 2 donc
     def __sub__(self, other):
         return F256(self.poly ^ other.poly)
-
     def __neg__(self):
         return self
-
     def __int__(self):
         return self.poly
-
     def __str__(self):
         # Finalement, on affiche juste le polynôme et non pas la puissance de X
         return str(self.poly)
-
     def __repr__(self):
         return str(self.poly)
-
     def __eq__(self, other):
         return self.poly == other.poly
 
@@ -122,11 +99,6 @@ setattr(F256, "__mul__", mulF256)
 setattr(F256, "__pow__", powF256)
 setattr(F256, "__truediv__", truedivF256)
 
-
-
-#################################
-# NOUVELLE APPROCHE POLYNÔMIALE #
-#################################
 
 #########################################
 # FONCTIONS GÉNÉRALES SUR LES POLYNÔMES #
@@ -380,7 +352,7 @@ def extract_img(url):
         x = i % largeur
         y = i // largeur
         for c in range(3):
-            Fpixels[y, 3 * x + c] = F256(pixels[i][c])
+            Fpixels[y, 3 * x + c] = F256(pixels[i][c]) #type: ignore
     return Fpixels
 
 # NOTE:
@@ -420,14 +392,6 @@ def encoder_blocs(blocs, t, n_process, silent):
 ##################
 # DÉCODAGE IMAGE #
 ##################
-
-# HACK:
-# On n'a pas besoin de créer d'autres types de bruit.
-# En effet, dans un vrai système de type Reed-Solomon,
-# les blocs sont astucieusement choisis/choisis aléatoirement
-# afin que le bruit se répartissent le plus possible sur les blocs.
-# Dans le but de ne pas avoir une concentration excessive d'erreur sur un seul bloc
-# ce qui empêcherait toute correction.
 
 # Changer un certain % de valeurs de couleurs aléatoirement
 def bruit(blocs_encodes, pourcent):
@@ -495,6 +459,58 @@ def erreur(final, initial):
     size = len(final) * len(final[0])
     return (compte_val / size, compte_pixel / size)
 
+####################
+# ANCIENNE VERSION #
+####################
+
+def encodage_v1(u):
+    k = u.shape[0]
+    a = np.zeros(255, dtype=F256)
+    for i in range(255):
+        c = F256(0)
+        for j in range(k):
+            c += u[j] * table_exp[(i * j) % 255]
+        a[i] = c
+    return a
+
+def combi_random(jusqua, k, iter_max):
+    for i in range(iter_max):
+        yield random.sample(range(jusqua), k)
+
+# Pour la suite, il est nécéssaire que decodage ne renvoit pas de données
+# mais modifie une liste en argument à l'emplacement prévu
+def decodage_v1(w, k, lim_pointe, lim_max, liste, emplacement):
+    udict = {}
+    # Pour chaque façon de prendre k équations parmi les 255
+    for kcombi in combi_random(255, k, lim_max):
+        w_k = np.array([w[x] for x in kcombi])
+        matrice_systeme = np.zeros((k, k), dtype=F256)
+        for i in range(len(kcombi)):
+            for puissance in range(k):
+                matrice_systeme[i, puissance] = table_exp[(kcombi[i] * puissance) % 255]
+        u = algo_du_pivot(matrice_systeme) @ w_k
+        # On convertit u en un object "hashable"
+        hash_u = tuple([int(i) for i in u])
+        if hash_u not in udict:
+            udict[hash_u] = 0
+        udict[hash_u] += 1
+        # Dès que l'on a plus de "limite" équations menant au même vecteur on s'arrête
+        max_compte = 0
+        max_u = None
+        for u in udict:
+            if udict[u] > max_compte:
+                max_compte = udict[u]
+                max_u = u
+        if max_compte >= lim_pointe:
+            liste[emplacement] = np.array(max_u)
+            return
+    raise Exception("pas trouvé")
+
+
+##############
+# MODE EXCEL #
+##############
+
 # Surveille le temps pris par une tache à une précision donnée
 def monitor(fn, args, texte, precis):
     print(texte)
@@ -505,10 +521,6 @@ def monitor(fn, args, texte, precis):
     print()
     return output
 
-
-##############
-# MODE EXCEL #
-##############
 
 if __name__ == "__main__":
 
@@ -548,12 +560,6 @@ if __name__ == "__main__":
                 print()
             taille, nom, blocs_x, blocs_y, t, pourcent_bruit = row.taille, row.nom, row.blocs_x, row.blocs_y, row.t, row.bruit
             t_max = int((255 - blocs_x * blocs_y)/2)
-            # pour modifier
-            # tableau.at[i, "bruit"] = 0
-            # pour lire
-            # row.bruit
-            # pour enregistrer
-            # tableau.to_excel("/home/caracole/H4/TIPE/excel/sortie.xlsx")
             img_url = f"/home/caracole/H4/TIPE/images sources/{taille}/{nom}.jpg"
 
             img_raw = extract_img(img_url)
@@ -683,63 +689,3 @@ if __name__ == "__main__":
 
         boucle += 1
 
-
-####################
-# ANCIENNE VERSION #
-####################
-
-############################
-# Version finale et aboutie (normalement) de l'implémentation du premier algorithme
-# c'est uniquement le 1er algorithme.
-# Résultats peu concluants
-# Même en optimisant énormément les fonctions les plus appelés, le programme prend une éternité.
-# Maintenant algo_du_pivot s'execute aux alentours de 0.01 secondes même pour des matrices de taille 180.
-# decodage aussi a été accéléré.
-# La fonction de décodage d'une image a été améliorer et décode les blocs en parallèle (jusqu'à 10 en même temps - dépend de l'image)
-# Sur mon PC (a priori vu les temps, il est 2x plus rapide que replit),
-# rien que le décodage d'Albert Einstein en 125*196 avec 1% (!!) d'erreur prend ~30min.
-# Je n'ai réussi qu'une seule fois à achever le décodage, mais à cause d'erreurs dans la suite du programme,
-# je n'ai pas pû voir si le résultat était correct.
-
-def encodage_v1(u):
-    k = u.shape[0]
-    a = np.zeros(255, dtype=F256)
-    for i in range(255):
-        c = F256(0)
-        for j in range(k):
-            c += u[j] * table_exp[(i * j) % 255]
-        a[i] = c
-    return a
-
-def combi_random(jusqua, k, iter_max):
-    for i in range(iter_max):
-        yield random.sample(range(jusqua), k)
-
-# Pour la suite, il est nécéssaire que decodage ne renvoit pas de données
-# mais modifie une liste en argument à l'emplacement prévu
-def decodage_v1(w, k, lim_pointe, lim_max, liste, emplacement):
-    udict = {}
-    # Pour chaque façon de prendre k équations parmi les 255
-    for kcombi in combi_random(255, k, lim_max):
-        w_k = np.array([w[x] for x in kcombi])
-        matrice_systeme = np.zeros((k, k), dtype=F256)
-        for i in range(len(kcombi)):
-            for puissance in range(k):
-                matrice_systeme[i, puissance] = table_exp[(kcombi[i] * puissance) % 255]
-        u = algo_du_pivot(matrice_systeme) @ w_k
-        # On convertit u en un object "hashable"
-        hash_u = tuple([int(i) for i in u])
-        if hash_u not in udict:
-            udict[hash_u] = 0
-        udict[hash_u] += 1
-        # Dès que l'on a plus de "limite" équations menant au même vecteur on s'arrête
-        max_compte = 0
-        max_u = None
-        for u in udict:
-            if udict[u] > max_compte:
-                max_compte = udict[u]
-                max_u = u
-        if max_compte >= lim_pointe:
-            liste[emplacement] = np.array(max_u)
-            return
-    raise Exception("pas trouvé")
